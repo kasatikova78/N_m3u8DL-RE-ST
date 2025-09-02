@@ -8,15 +8,17 @@ using N_m3u8DL_RE.Common.Util;
 using N_m3u8DL_RE.Config;
 using N_m3u8DL_RE.Downloader;
 using N_m3u8DL_RE.Entity;
+using N_m3u8DL_RE.Enum;
 using N_m3u8DL_RE.Parser;
 using N_m3u8DL_RE.Parser.Mp4;
 using N_m3u8DL_RE.Util;
 using Spectre.Console;
 using System.Collections.Concurrent;
+using System.Collections.Specialized;
 using System.IO.Pipes;
 using System.Text;
 using System.Threading.Tasks.Dataflow;
-using N_m3u8DL_RE.Enum;
+using System.Web;
 
 namespace N_m3u8DL_RE.DownloadManager;
 
@@ -30,7 +32,7 @@ internal class SimpleLiveRecordManager2
     List<OutputFile> OutputFiles = [];
     DateTime? PublishDateTime;
     bool STOP_FLAG = false;
-    int WAIT_SEC = 0; // 刷新间隔
+    float WAIT_SEC = 0; // 刷新间隔
     ConcurrentDictionary<int, int> RecordedDurDic = new(); // 已录制时长
     ConcurrentDictionary<int, int> RefreshedDurDic = new(); // 已刷新出的时长
     ConcurrentDictionary<int, BufferBlock<List<MediaSegment>>> BlockDic = new(); // 各流的Block
@@ -62,7 +64,7 @@ internal class SimpleLiveRecordManager2
             if (DownloaderConfig.MyOptions.Keys == null)
                 DownloaderConfig.MyOptions.Keys = [_key];
             else
-                DownloaderConfig.MyOptions.Keys = [..DownloaderConfig.MyOptions.Keys, _key];
+                DownloaderConfig.MyOptions.Keys = [.. DownloaderConfig.MyOptions.Keys, _key];
         }
     }
 
@@ -84,8 +86,48 @@ internal class SimpleLiveRecordManager2
     /// <returns></returns>
     private string GetSegmentName(MediaSegment segment, bool allHasDatetime, bool allSamePath)
     {
+        string name222 = OtherUtil.GetFileNameFromInput(segment.Url, false);
+        return name222;
+
+
+
+        string name333 = segment.Index.ToString();
+        Console.WriteLine(string.Format("GetSegmentName 4 url:{0} name:{1}", segment.Url, name333));
+        return name333;
+        /*
+        string stream_url = segment.Url;
+        if (stream_url.Contains("_part"))
+        {
+            string[] splits = stream_url.Split('_');
+
+            string timestampCorrupted = splits[splits.Length - 2];
+            string[] splits2 = timestampCorrupted.Split('.');
+            string timestamp = splits2[0];
+            long timestampNumber = long.Parse(timestamp);
+
+            string partCorrupted = splits[splits.Length - 1];
+            string[] splits3 = partCorrupted.Split('.');
+            string part = splits3[0];
+            part = part.Replace("part", "");
+            long partNumber = long.Parse(part);
+
+            string newTimestamp = (timestampNumber * 100 + partNumber).ToString();
+            return newTimestamp;
+        }
+        else
+        {
+            string[] splits = stream_url.Split('_');
+            string timestampCorrupted = splits[splits.Length - 1];
+            string[] splits2 = timestampCorrupted.Split('.');
+            string timestamp = splits2[0];
+            long timestampNumber = long.Parse(timestamp);
+            string newTimestamp = (timestampNumber * 100).ToString();
+            return newTimestamp;
+        }
+        */
         if (!string.IsNullOrEmpty(segment.NameFromVar))
         {
+            Console.WriteLine(string.Format("GetSegmentName 1 url:{0} NameFromVar:{1}", segment.Url, segment.NameFromVar));
             return segment.NameFromVar;
         }
 
@@ -95,15 +137,18 @@ internal class SimpleLiveRecordManager2
         if (allSamePath)
         {
             name = OtherUtil.GetValidFileName(segment.Url.Split('?').Last(), "_");
+            Console.WriteLine(string.Format("GetSegmentName 2 url:{0} name:{1}", segment.Url, name));
         }
 
         if (hls && allHasDatetime)
         {
             name = GetUnixTimestamp(segment.DateTime!.Value).ToString();
+            Console.WriteLine(string.Format("GetSegmentName 3 url:{0} name:{1}", segment.Url, name));
         }
         else if (hls)
         {
             name = segment.Index.ToString();
+            Console.WriteLine(string.Format("GetSegmentName 4 url:{0} name:{1}", segment.Url, name));
         }
 
         return name;
@@ -184,7 +229,7 @@ internal class SimpleLiveRecordManager2
             Logger.DebugMarkUp(string.Join(",", segments.Select(sss => GetSegmentName(sss, false, false))));
 
             // 下载init
-            if (!initDownloaded && streamSpec.Playlist?.MediaInit != null) 
+            if (!initDownloaded && streamSpec.Playlist?.MediaInit != null)
             {
                 task.MaxValue += 1;
                 // 对于fMP4，自动开启二进制合并
@@ -524,7 +569,7 @@ internal class SimpleLiveRecordManager2
                     {
                         fileOutputStream = new FileStream(output, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
                     }
-                    else 
+                    else
                     {
                         // 创建管道
                         output = Path.ChangeExtension(output, ".ts");
@@ -532,7 +577,7 @@ internal class SimpleLiveRecordManager2
                         fileOutputStream = PipeUtil.CreatePipe(pipeName);
                         Logger.InfoMarkUp($"{ResString.namedPipeCreated} [cyan]{pipeName.EscapeMarkup()}[/]");
                         PipeSteamNamesDic[task.Id] = pipeName;
-                        if (PipeSteamNamesDic.Count == SelectedSteams.Count(x => x.MediaType != MediaType.SUBTITLES)) 
+                        if (PipeSteamNamesDic.Count == SelectedSteams.Count(x => x.MediaType != MediaType.SUBTITLES))
                         {
                             var names = PipeSteamNamesDic.OrderBy(i => i.Key).Select(k => k.Value).ToArray();
                             Logger.WarnMarkUp($"{ResString.namedPipeMux} [deepskyblue1]{Path.GetFileName(output).EscapeMarkup()}[/]");
@@ -554,7 +599,7 @@ internal class SimpleLiveRecordManager2
                         // shaka/ffmpeg实时解密不需要init文件用于合并，mp4decrpyt需要
                         if (string.IsNullOrEmpty(currentKID) || decryptEngine == DecryptEngine.MP4DECRYPT)
                         {
-                            files = [initResult.ActualFilePath, ..files];
+                            files = [initResult.ActualFilePath, .. files];
                         }
                     }
                     foreach (var inputFilePath in files)
@@ -614,12 +659,12 @@ internal class SimpleLiveRecordManager2
                 }
             }
 
-            if (STOP_FLAG && source.Count == 0) 
+            if (STOP_FLAG && source.Count == 0)
                 break;
         }
 
         if (fileOutputStream == null) return true;
-        
+
         if (!DownloaderConfig.MyOptions.LivePipeMux)
         {
             // 记录所有文件信息
@@ -639,12 +684,72 @@ internal class SimpleLiveRecordManager2
         return true;
     }
 
+
+    DateTime last_refresh_playlist_time;
     private async Task PlayListProduceAsync(Dictionary<StreamSpec, ProgressTask> dic)
     {
         while (!STOP_FLAG)
         {
             if (WAIT_SEC == 0) continue;
-            
+
+            foreach (KeyValuePair<StreamSpec, ProgressTask> kvp in dic)
+            {
+                StreamSpec streamSpec = kvp.Key;
+
+                if ((StreamExtractor.IsMediaShit) && StreamExtractor.last_msn != -1 && StreamExtractor.last_part != -1)
+                {
+                    Uri unparsedUrl = new Uri(streamSpec.Url);
+                    string query = unparsedUrl.Query;
+                    NameValueCollection queryParams = HttpUtility.ParseQueryString(query);
+                    if (!query.ToLower().Contains("_hls_msn") && !query.ToLower().Contains("_hls_part"))
+                    {
+                        Console.WriteLine(string.Format("HLSExtract RefreshPlayListAsync First Time, just set it"));
+                        queryParams["_HLS_msn"] = StreamExtractor.last_msn.ToString();
+                        queryParams["_HLS_part"] = StreamExtractor.last_part.ToString();
+                    }
+                    else
+                    {
+                        int current_url_msn = int.Parse(queryParams["_HLS_msn"]);
+                        int current_url_part = int.Parse(queryParams["_hls_part"]);
+
+                        int exractor_msn = StreamExtractor.last_msn;
+                        int exractor_part = StreamExtractor.last_part;
+                        Dictionary<int, int> msn_max_part_dict = StreamExtractor.msn_max_part_dict;
+
+                        int max_part = msn_max_part_dict[current_url_msn];
+                        //当前msn还有part没解析(这里假设max_part一定会在更早的时机更新)
+                        if (current_url_part < max_part)
+                        {
+                            int next_part = current_url_part + 1;
+                            queryParams["_HLS_part"] = next_part.ToString();
+                        }
+                        //当前msn所有part已经解析完毕，移动到下一个msn
+                        else
+                        {
+                            int next_msn = current_url_msn + 1;
+                            int next_part = 0;
+                            queryParams["_HLS_msn"] = next_msn.ToString();
+                            queryParams["_HLS_part"] = next_part.ToString();
+
+                            if (!msn_max_part_dict.ContainsKey(next_msn))
+                            {
+                                Console.WriteLine(string.Format("Important HLSExtract RefreshPlayListAsync msn_max_part_dict not contain msn {0}", next_msn));
+                            }
+                        }
+                    }
+
+                    UriBuilder uriBuilder = new UriBuilder(streamSpec.Url); // 创建一个UriBuilder实例，可选地基于一个Uri对象
+                    string? newQueryString = HttpUtility.UrlEncode(queryParams.ToString()); // 将NameValueCollection转换回查询字符串格式
+                    uriBuilder.Query = newQueryString; // 修改查询字符串为newquery=value
+
+                    // 获取修改后的URI字符串
+                    Uri newUri = uriBuilder.Uri; // 创建一个新的Uri对象
+                    string newUriString = newUri.ToString().Replace("%3d", "=").Replace("%26", "&"); // 获取URI的字符串表示形式
+
+                    streamSpec.Url = newUriString;
+                }
+            }
+
             // 1. MPD 所有URL相同 单次请求即可获得所有轨道的信息
             // 2. M3U8 所有URL不同 才需要多次请求
             await Parallel.ForEachAsync(dic, async (dic, _) =>
@@ -697,7 +802,21 @@ internal class SimpleLiveRecordManager2
             try
             {
                 // Logger.WarnMarkUp($"wait {waitSec}s");
-                if (!STOP_FLAG) await Task.Delay(WAIT_SEC * 1000, CancellationTokenSource.Token);
+                int defaultDelayValue = (int)(WAIT_SEC * 1000);
+                int delayValue = defaultDelayValue;
+
+                TimeSpan span = DateTime.Now - last_refresh_playlist_time;
+                int diff_time = (int)span.TotalMilliseconds;
+                if (diff_time >= defaultDelayValue)
+                    delayValue = 0;
+                else
+                    delayValue = defaultDelayValue - diff_time;
+
+                if (delayValue > 0)
+                {
+                    if (!STOP_FLAG) await Task.Delay(delayValue, CancellationTokenSource.Token);
+                }
+                last_refresh_playlist_time = DateTime.Now;
                 // 刷新列表
                 if (!STOP_FLAG) await StreamExtractor.RefreshPlayListAsync(dic.Keys.ToList());
             }
@@ -727,7 +846,7 @@ internal class SimpleLiveRecordManager2
         var lastName = LastFileNameDic[task.Id];
 
         // 优先使用dateTime判断
-        if (dateTime != 0 && streamSpec.Playlist!.MediaParts[0].MediaSegments.All(s => s.DateTime != null)) 
+        if (dateTime != 0 && streamSpec.Playlist!.MediaParts[0].MediaSegments.All(s => s.DateTime != null))
         {
             index = streamSpec.Playlist!.MediaParts[0].MediaSegments.FindIndex(s => GetUnixTimestamp(s.DateTime!.Value) == dateTime);
         }
@@ -791,7 +910,7 @@ internal class SimpleLiveRecordManager2
 
         var progress = CustomAnsiConsole.Console.Progress().AutoClear(true);
         progress.AutoRefresh = DownloaderConfig.MyOptions.LogLevel != LogLevel.OFF;
-            
+
         // 进度条的列定义
         var progressColumns = new ProgressColumn[]
         {

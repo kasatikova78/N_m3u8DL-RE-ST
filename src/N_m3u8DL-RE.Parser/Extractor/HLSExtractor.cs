@@ -20,11 +20,20 @@ internal class HLSExtractor : IExtractor
 
     public ParserConfig ParserConfig { get; set; }
 
+    public bool IsMediaShit = false;
+    public int last_msn;
+    public int last_part;
+    public Dictionary<int, int> msn_max_part_dict;
+    Dictionary<string, string> ih = new Dictionary<string, string> { { "Zokee2OhPh9kugh4", "Quean4cai9boJa5a" } };
+
     public HLSExtractor(ParserConfig parserConfig)
     {
         this.ParserConfig = parserConfig;
         this.M3u8Url = parserConfig.Url ?? string.Empty;
         this.SetBaseUrl();
+        this.last_msn = -1;
+        this.last_part = -1;
+        this.msn_max_part_dict = new Dictionary<int, int>();
     }
 
     private void SetBaseUrl()
@@ -202,6 +211,29 @@ internal class HLSExtractor : IExtractor
         return Task.FromResult(streams);
     }
 
+
+    private Byte[] SHA256EncryptByte(string deseninstr)
+    {
+        using (var mySHA256 = System.Security.Cryptography.SHA256Managed.Create())
+        {
+            byte[] deseninbyte = System.Text.Encoding.UTF8.GetBytes(deseninstr);
+            byte[] EncryptBytes = mySHA256.ComputeHash(deseninbyte);
+            return EncryptBytes;
+        }
+    }
+    private Byte[] Base64Decode(string data)
+    {
+        int missing_padding = data.Length % 4;
+        int need_to_add_count = 4 - missing_padding;
+        if (missing_padding != 0)
+        {
+            for (int i = 0; i < need_to_add_count; i++)
+                data = data + '=';
+        }
+        return Convert.FromBase64String(data);
+    }
+
+
     private Task<Playlist> ParseListAsync()
     {
         // 标记是否已清除广告分片
@@ -212,7 +244,7 @@ internal class HLSExtractor : IExtractor
         {
             Logger.WarnMarkUp($"[darkorange3_1]{ResString.allowHlsMultiExtMap}[/]");
         }
-        
+
         using StringReader sr = new StringReader(M3u8Content);
         string? line;
         bool expectSegment = false;
@@ -228,12 +260,16 @@ internal class HLSExtractor : IExtractor
         EncryptInfo currentEncryptInfo = new();
         if (ParserConfig.CustomMethod != null)
             currentEncryptInfo.Method = ParserConfig.CustomMethod.Value;
-        if (ParserConfig.CustomeKey is { Length: > 0 }) 
+        if (ParserConfig.CustomeKey is { Length: > 0 })
             currentEncryptInfo.Key = ParserConfig.CustomeKey;
         if (ParserConfig.CustomeIV is { Length: > 0 })
             currentEncryptInfo.IV = ParserConfig.CustomeIV;
         // 上次读取到的加密行，#EXT-X-KEY:……
         string lastKeyLine = "";
+
+        string pkey = "";
+        string part_url = "";
+        Dictionary<string, int> part_url_dictionary = new Dictionary<string, int>();
 
         MediaPart mediaPart = new();
         MediaSegment segment = new();
@@ -296,7 +332,7 @@ internal class HLSExtractor : IExtractor
                 }
                 // 常规情况的#EXT-X-DISCONTINUITY标记，新建part
                 if (hasAd || segments.Count < 1) continue;
-                
+
                 mediaParts.Add(new MediaPart
                 {
                     MediaSegments = segments,
@@ -308,7 +344,7 @@ internal class HLSExtractor : IExtractor
             {
                 var uri = ParserUtil.GetAttribute(line, "URI");
                 var uri_last = ParserUtil.GetAttribute(lastKeyLine, "URI");
-                    
+
                 // 如果KEY URL相同，不进行重复解析
                 if (uri != uri_last)
                 {
@@ -321,7 +357,7 @@ internal class HLSExtractor : IExtractor
                 lastKeyLine = line;
             }
             // 解析分片时长
-            else if (line.StartsWith(HLSTags.extinf))
+            else if (!this.IsMediaShit && line.StartsWith(HLSTags.extinf))
             {
                 string[] tmp = ParserUtil.GetAttribute(line).Split(',');
                 segment.Duration = Convert.ToDouble(tmp[0]);
@@ -352,7 +388,7 @@ internal class HLSExtractor : IExtractor
             // #EXT-X-MAP
             else if (line.StartsWith(HLSTags.ext_x_map))
             {
-                if (playlist.MediaInit == null || hasAd) 
+                if (playlist.MediaInit == null || hasAd)
                 {
                     playlist.MediaInit = new MediaSegment()
                     {
@@ -387,6 +423,118 @@ internal class HLSExtractor : IExtractor
                     {
                         isEndlist = true;
                         break;
+                    }
+                }
+            }
+            else if (this.IsMediaShit && line.StartsWith("#EXT-X-PART-INF")) continue;
+            else if (this.IsMediaShit && line.StartsWith("#EXT-X-MOUFLON:PSCH"))
+            {
+                string[] splits = line.Split(':');
+                pkey = splits[splits.Length - 1];
+            }
+            else if (this.IsMediaShit && line.StartsWith("#EXT-X-MOUFLON:FILE"))
+            {
+                string t = ih[pkey];
+                part_url = line.Substring(20);
+                byte[] i = SHA256EncryptByte(t);
+                byte[] n = Base64Decode(part_url);
+
+                byte[] s = new byte[n.Length];
+                for (int x = 0; x < n.Length; x++)
+                    s[x] = (byte)((int)n[x] ^ (int)i[x % i.Length]);
+                part_url = System.Text.Encoding.UTF8.GetString(s);
+            }
+            else if (this.IsMediaShit && line.StartsWith("#EXT-X-PART"))
+            {
+                string fake_url = ParserUtil.GetAttribute(line, "URI");
+                string duration = ParserUtil.GetAttribute(line, "DURATION");
+                part_url = fake_url.Replace("media.mp4", part_url);
+                if (!part_url_dictionary.ContainsKey(part_url))
+                {
+                    string[] splits = part_url.Split('_');
+
+                    string timestampCorrupted = splits[splits.Length - 2];
+                    string[] splits2 = timestampCorrupted.Split('.');
+                    string timestamp = splits2[0];
+                    long timestampNumber = long.Parse(timestamp);
+
+                    string partCorrupted = splits[splits.Length - 1];
+                    string[] splits3 = partCorrupted.Split('.');
+                    string part = splits3[0];
+                    int partNumber = int.Parse(part.Replace("part", ""));
+
+                    string streamIndex = splits[splits.Length - 4];
+                    int streamIndexNumber = int.Parse(streamIndex);
+
+                    this.last_msn = streamIndexNumber;
+                    this.last_part = partNumber;
+                    if (!msn_max_part_dict.ContainsKey(streamIndexNumber))
+                        msn_max_part_dict[streamIndexNumber] = 0;
+
+                    if (partNumber > msn_max_part_dict[streamIndexNumber])
+                        msn_max_part_dict[streamIndexNumber] = partNumber;
+
+                    long timestampNumberAddPart = timestampNumber * 100 + partNumber;
+                    DateTime partDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+                    partDateTime = partDateTime.AddSeconds(timestampNumberAddPart).ToLocalTime();
+
+                    segment.Url = part_url;
+                    segment.DateTime = partDateTime;
+                    segment.Duration = Convert.ToDouble(duration);
+                    segment.Index = timestampNumberAddPart;
+                    segments.Add(segment);
+                    segment = new();
+
+                    part_url_dictionary[part_url] = 0;
+                    //Console.WriteLine(string.Format("HLSExtract parse part url:{0} timestampNumber:{1} partNumber:{2} Index:{3} partNumber:{4}", part_url, timestampNumber, partNumber, segment.Index, partNumber));
+                }
+            }
+            else if (this.IsMediaShit && line.StartsWith("#EXT-X-PRELOAD-HINT"))
+            {
+                string preload_url = ParserUtil.GetAttribute(line, "URI");
+                if (preload_url.Contains("_part"))
+                {
+                    string[] splits = preload_url.Split('_');
+
+                    string timestampCorrupted = splits[splits.Length - 2];
+                    string[] splits2 = timestampCorrupted.Split('.');
+                    string timestamp = splits2[0];
+                    long timestampNumber = long.Parse(timestamp);
+
+                    string partCorrupted = splits[splits.Length - 1];
+                    string[] splits3 = partCorrupted.Split('.');
+                    string part = splits3[0];
+                    int partNumber = int.Parse(part.Replace("part", ""));
+
+                    string streamIndex = splits[splits.Length - 4];
+                    int streamIndexNumber = int.Parse(streamIndex);
+
+                    this.last_msn = streamIndexNumber;
+                    this.last_part = partNumber;
+                    if (!msn_max_part_dict.ContainsKey(streamIndexNumber))
+                        msn_max_part_dict[streamIndexNumber] = 0;
+
+                    if (partNumber > msn_max_part_dict[streamIndexNumber])
+                        msn_max_part_dict[streamIndexNumber] = partNumber;
+
+                    for (int i = 0; i <= partNumber; i++)
+                    {
+                        long timestampNumberAddPart = timestampNumber * 100 + i;
+                        DateTime partDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+                        partDateTime = partDateTime.AddSeconds(timestampNumberAddPart).ToLocalTime();
+                        string p_url = preload_url.Replace(part, string.Format("part{0}", i));
+                        if (!part_url_dictionary.ContainsKey(p_url))
+                        {
+                            segment.Url = p_url;
+                            segment.DateTime = partDateTime;
+                            segment.Duration = 0.5;
+                            segment.Index = timestampNumberAddPart;
+                            //Console.WriteLine(string.Format("HLSExtract parse part url:{0} timestampNumber:{1} streamIndex:{2} partNumber:{3} Index:{4} i:{5}", part_url, timestampNumber, streamIndexNumber, partNumber, segment.Index, i));
+                            segments.Add(segment);
+                            segment = new();
+
+                            part_url_dictionary[p_url] = 0;
+                        }
                     }
                 }
             }
@@ -459,6 +607,10 @@ internal class HLSExtractor : IExtractor
 
     public async Task<List<StreamSpec>> ExtractStreamsAsync(string rawText)
     {
+        this.IsMediaShit = false;
+        if (rawText.Contains("/media.mp4"))
+            this.IsMediaShit = true;
+
         this.M3u8Content = rawText;
         this.PreProcessContent();
         if (M3u8Content.Contains(HLSTags.ext_x_stream_inf))
@@ -522,7 +674,7 @@ internal class HLSExtractor : IExtractor
         {
             var match = newStreams.Where(n => n.ToShortString() == l.ToShortString()).ToList();
             if (match.Count == 0) continue;
-            
+
             Logger.DebugMarkUp($"{l.Url} => {match.First().Url}");
             l.Url = match.First().Url;
         }

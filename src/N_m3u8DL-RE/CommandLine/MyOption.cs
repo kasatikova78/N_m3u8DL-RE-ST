@@ -260,7 +260,7 @@ internal class MyOption
     /// <summary>
     /// See: <see cref="CommandInvoker.LiveWaitTime"/>.
     /// </summary>
-    public int? LiveWaitTime { get; set; }
+    public float? LiveWaitTime { get; set; }
     /// <summary>
     /// See: <see cref="CommandInvoker.LiveTakeCount"/>.
     /// </summary>

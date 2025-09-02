@@ -19,6 +19,10 @@ public class StreamExtractor
     private static SemaphoreSlim semaphore = new(1, 1);
 
     public Dictionary<string, string> RawFiles { get; set; } = new(); // 存储（文件名,文件内容）
+    public bool IsMediaShit { get { return (extractor as HLSExtractor).IsMediaShit; } }
+    public int last_msn { get { return (extractor as HLSExtractor).last_msn; } }
+    public int last_part { get { return (extractor as HLSExtractor).last_part; } }
+    public Dictionary<int, int> msn_max_part_dict { get { return (extractor as HLSExtractor).msn_max_part_dict; } }
 
     public StreamExtractor(ParserConfig parserConfig)
     {

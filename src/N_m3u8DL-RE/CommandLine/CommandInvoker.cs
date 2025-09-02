@@ -96,7 +96,7 @@ internal static partial class CommandInvoker
     private static readonly Option<bool> LiveKeepSegments = new(["--live-keep-segments"], description: ResString.cmd_liveKeepSegments, getDefaultValue: () => true);
     private static readonly Option<bool> LivePipeMux = new(["--live-pipe-mux"], description: ResString.cmd_livePipeMux, getDefaultValue: () => false);
     private static readonly Option<TimeSpan?> LiveRecordLimit = new(["--live-record-limit"], description: ResString.cmd_liveRecordLimit, parseArgument: ParseLiveLimit) { ArgumentHelpName = "HH:mm:ss" };
-    private static readonly Option<int?> LiveWaitTime = new(["--live-wait-time"], description: ResString.cmd_liveWaitTime) { ArgumentHelpName = "SEC" };
+    private static readonly Option<float?> LiveWaitTime = new(["--live-wait-time"], description: ResString.cmd_liveWaitTime) { ArgumentHelpName = "SEC" };
     private static readonly Option<int> LiveTakeCount = new(["--live-take-count"], description: ResString.cmd_liveTakeCount, getDefaultValue: () => 16) { ArgumentHelpName = "NUM" };
     private static readonly Option<bool> LiveFixVttByAudio = new(["--live-fix-vtt-by-audio"], description: ResString.cmd_liveFixVttByAudio, getDefaultValue: () => false);
 
